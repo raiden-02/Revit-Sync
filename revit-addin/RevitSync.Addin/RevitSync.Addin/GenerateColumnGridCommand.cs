@@ -5,7 +5,7 @@ using Autodesk.Revit.UI;
 using System;
 using System.Linq;
 
-namespace RevitInsights.Addin
+namespace RevitSync.Addin
 {
     [Transaction(TransactionMode.Manual)]
     public class GenerateColumnGridCommand : IExternalCommand
@@ -28,7 +28,7 @@ namespace RevitInsights.Addin
             Level level = GetLevelFromView(activeView, doc);
             if (level == null)
             {
-                TaskDialog.Show("Geometry Stream", "Could not determine a level for the active view.");
+                TaskDialog.Show("RevitSync", "Could not determine a level for the active view.");
                 return Result.Failed;
             }
 
@@ -54,7 +54,7 @@ namespace RevitInsights.Addin
 
             if (minX >= maxX || minY >= maxY)
             {
-                TaskDialog.Show("Geometry Stream", "Floor area too small for the chosen spacing.");
+                TaskDialog.Show("RevitSync", "Floor area too small for the chosen spacing.");
                 return Result.Failed;
             }
 
@@ -67,7 +67,7 @@ namespace RevitInsights.Addin
 
             if (columnSymbol == null)
             {
-                TaskDialog.Show("Geometry Stream", "Could not find a structural column family symbol in this project.");
+                TaskDialog.Show("RevitSync", "Could not find a structural column family symbol in this project.");
                 return Result.Failed;
             }
 

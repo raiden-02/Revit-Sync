@@ -113,7 +113,7 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
         <div className="fixed inset-0 bg-slate-950 text-slate-100">
             {/* HUD */}
             <div className="absolute left-4 top-4 z-10 rounded-xl bg-slate-950/70 backdrop-blur border border-slate-800 px-3 py-2 text-sm shadow-lg">
-                <div className="font-semibold">Revit Geometry Stream</div>
+                <div className="font-semibold">RevitSync</div>
                 <div className="text-xs text-slate-300">
                     Project: <b>{snapshot.projectName}</b> • Primitives: <b>{count}</b> • {new Date(snapshot.timestampUtc).toLocaleTimeString()}
                 </div>

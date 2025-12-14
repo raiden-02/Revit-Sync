@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 
-namespace RevitInsights.Addin
+namespace RevitSync.Addin
 {
     [Transaction(TransactionMode.ReadOnly)]
     public class ExportGeometryCommand : IExternalCommand
@@ -107,7 +107,7 @@ namespace RevitInsights.Addin
 
             if (primitives.Count == 0)
             {
-                TaskDialog.Show("Revit Insights", "No elements found for the selected categories in this view.");
+                TaskDialog.Show("RevitSync", "No elements found for the selected categories in this view.");
                 return Result.Succeeded;
             }
 
@@ -131,7 +131,7 @@ namespace RevitInsights.Addin
             }
 
             TaskDialog.Show(
-                "Geometry Stream",
+                "RevitSync",
                 $"Exported {primitives.Count} geometry primitives for project '{projectName}'."
             );
             

@@ -4,13 +4,13 @@ using System.Reflection;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
-namespace RevitInsights.Addin
+namespace RevitSync.Addin
 {
     public class App : IExternalApplication
     {
         public Result OnStartup(UIControlledApplication app)
         {
-            var panel = app.CreateRibbonPanel("Geometry Stream");
+            var panel = app.CreateRibbonPanel("RevitSync");
 
             string asmPath = Assembly.GetExecutingAssembly().Location;
 
@@ -19,7 +19,7 @@ namespace RevitInsights.Addin
                 "GenerateColumnGrid",
                 "Generate Column Grid",
                 asmPath,
-                "RevitInsights.Addin.GenerateColumnGridCommand"
+                "RevitSync.Addin.GenerateColumnGridCommand"
             )
             {
                 ToolTip = "Generate test geometry quickly by placing a grid of structural columns in the active plan view crop."
@@ -30,7 +30,7 @@ namespace RevitInsights.Addin
                 "ExportGeometry",
                 "Export Geometry",
                 asmPath,
-                "RevitInsights.Addin.ExportGeometryCommand"
+                "RevitSync.Addin.ExportGeometryCommand"
             )
             {
                 ToolTip = "Stream a lightweight 3D geometry snapshot (bounding boxes) to the local viewer."

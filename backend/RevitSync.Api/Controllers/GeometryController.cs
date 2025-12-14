@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace RevitInsights.Api.Controllers
+namespace RevitSync.Api.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
