@@ -28,7 +28,7 @@ namespace RevitInsights.Addin
             Level level = GetLevelFromView(activeView, doc);
             if (level == null)
             {
-                TaskDialog.Show("Revit Insights", "Could not determine a level for the active view.");
+                TaskDialog.Show("Geometry Stream", "Could not determine a level for the active view.");
                 return Result.Failed;
             }
 
@@ -37,7 +37,7 @@ namespace RevitInsights.Addin
             if (bbox == null)
             {
                 TaskDialog.Show(
-                    "Revit Insights",
+                    "Geometry Stream",
                     "Could not determine the plan extents. Make sure the active view has an active crop box.");
                 return Result.Failed;
             }
@@ -54,7 +54,7 @@ namespace RevitInsights.Addin
 
             if (minX >= maxX || minY >= maxY)
             {
-                TaskDialog.Show("Revit Insights", "Floor area too small for the chosen spacing.");
+                TaskDialog.Show("Geometry Stream", "Floor area too small for the chosen spacing.");
                 return Result.Failed;
             }
 
@@ -67,7 +67,7 @@ namespace RevitInsights.Addin
 
             if (columnSymbol == null)
             {
-                TaskDialog.Show("Revit Insights", "Could not find a structural column family symbol in this project.");
+                TaskDialog.Show("Geometry Stream", "Could not find a structural column family symbol in this project.");
                 return Result.Failed;
             }
 
@@ -99,7 +99,7 @@ namespace RevitInsights.Addin
             }
 
             TaskDialog.Show(
-                "Revit Insights",
+                "Geometry Stream",
                 $"Generated column grid on level '{level.Name}'.\nColumns placed: {placedCount}");
 
             return Result.Succeeded;

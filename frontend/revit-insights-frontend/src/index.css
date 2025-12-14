@@ -2,5 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-body { @apply bg-slate-50 text-slate-900; }
+html, body, #root { height: 100%; }
+body { @apply bg-slate-950 text-slate-100; }
 .card { @apply bg-white rounded-2xl shadow p-4; }

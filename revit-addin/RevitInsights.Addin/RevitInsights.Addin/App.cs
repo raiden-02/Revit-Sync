@@ -10,7 +10,7 @@ namespace RevitInsights.Addin
     {
         public Result OnStartup(UIControlledApplication app)
         {
-            var panel = app.CreateRibbonPanel("Revit Insights");
+            var panel = app.CreateRibbonPanel("Geometry Stream");
 
             string asmPath = Assembly.GetExecutingAssembly().Location;
 
@@ -22,7 +22,7 @@ namespace RevitInsights.Addin
                 "RevitInsights.Addin.GenerateColumnGridCommand"
             )
             {
-                ToolTip = "Procedurally generate a column grid on the active level based on plan extents."
+                ToolTip = "Generate test geometry quickly by placing a grid of structural columns in the active plan view crop."
             };
 
             // Export lightweight geometry snapshot
@@ -33,7 +33,7 @@ namespace RevitInsights.Addin
                 "RevitInsights.Addin.ExportGeometryCommand"
             )
             {
-                ToolTip = "Export a lightweight 3D geometry snapshot (bounding boxes) to the dashboard."
+                ToolTip = "Stream a lightweight 3D geometry snapshot (bounding boxes) to the local viewer."
             };
 
             panel.AddItem(genGridBtnData);
