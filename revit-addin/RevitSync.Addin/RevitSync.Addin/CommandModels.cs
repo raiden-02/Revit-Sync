@@ -6,8 +6,21 @@ namespace RevitSync.Addin
     {
         public string ProjectName { get; set; } = "";
         public string CommandId { get; set; } = "";
+        
+        // "ADD_BOXES", "DELETE_ELEMENTS", "MOVE_ELEMENT"
         public string Type { get; set; } = "ADD_BOXES";
+        
+        // For ADD_BOXES
         public List<BoxDto> Boxes { get; set; } = new List<BoxDto>();
+        
+        // For DELETE_ELEMENTS
+        public List<string> ElementIds { get; set; } = new List<string>();
+        
+        // For MOVE_ELEMENT
+        public string TargetElementId { get; set; } = "";
+        public double? NewCenterX { get; set; }
+        public double? NewCenterY { get; set; }
+        public double? NewCenterZ { get; set; }
     }
 
     public class BoxDto
@@ -21,4 +34,3 @@ namespace RevitSync.Addin
         public double SizeZ { get; set; }
     }
 }
-

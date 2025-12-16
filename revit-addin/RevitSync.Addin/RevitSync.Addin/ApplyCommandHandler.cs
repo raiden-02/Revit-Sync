@@ -2,6 +2,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace RevitSync.Addin
 {
@@ -21,17 +22,17 @@ namespace RevitSync.Addin
 
             try
             {
-                if (cmd.Type == "ADD_BOXES")
+                switch (cmd.Type)
                 {
-                    using (var tx = new Transaction(doc, $"RevitSync: {cmd.Type}"))
-                    {
-                        tx.Start();
-
-                        foreach (var b in cmd.Boxes)
-                            CreateBoxDirectShape(doc, cmd, b);
-
-                        tx.Commit();
-                    }
+                    case "ADD_BOXES":
+                        ExecuteAddBoxes(doc, cmd);
+                        break;
+                    case "DELETE_ELEMENTS":
+                        ExecuteDeleteElements(doc, cmd);
+                        break;
+                    case "MOVE_ELEMENT":
+                        ExecuteMoveElement(doc, cmd);
+                        break;
                 }
             }
             catch (Exception ex)
@@ -41,6 +42,85 @@ namespace RevitSync.Addin
         }
 
         public string GetName() => "RevitSync Apply Command Handler";
+
+        private void ExecuteAddBoxes(Document doc, GeometryCommandDto cmd)
+        {
+            using (var tx = new Transaction(doc, "RevitSync: ADD_BOXES"))
+            {
+                tx.Start();
+
+                foreach (var b in cmd.Boxes)
+                    CreateBoxDirectShape(doc, cmd, b);
+
+                tx.Commit();
+            }
+        }
+
+        private void ExecuteDeleteElements(Document doc, GeometryCommandDto cmd)
+        {
+            if (cmd.ElementIds == null || cmd.ElementIds.Count == 0) return;
+
+            using (var tx = new Transaction(doc, "RevitSync: DELETE_ELEMENTS"))
+            {
+                tx.Start();
+
+                int deletedCount = 0;
+                foreach (var idStr in cmd.ElementIds)
+                {
+                    if (!int.TryParse(idStr, out int idVal)) continue;
+                    
+                    var elementId = new ElementId(idVal);
+                    var element = doc.GetElement(elementId);
+                    
+                    if (element == null) continue;
+
+                    // Only allow deleting RevitSync-created DirectShapes for safety
+                    var ds = element as DirectShape;
+                    if (ds != null && ds.ApplicationId == "RevitSync")
+                    {
+                        doc.Delete(elementId);
+                        deletedCount++;
+                    }
+                }
+
+                tx.Commit();
+            }
+        }
+
+        private void ExecuteMoveElement(Document doc, GeometryCommandDto cmd)
+        {
+            if (string.IsNullOrEmpty(cmd.TargetElementId)) return;
+            if (cmd.NewCenterX == null || cmd.NewCenterY == null || cmd.NewCenterZ == null) return;
+
+            if (!int.TryParse(cmd.TargetElementId, out int idVal)) return;
+            
+            var elementId = new ElementId(idVal);
+            var element = doc.GetElement(elementId);
+            
+            if (element == null) return;
+
+            // Only allow moving RevitSync-created DirectShapes for safety
+            var ds = element as DirectShape;
+            if (ds == null || ds.ApplicationId != "RevitSync") return;
+
+            // Get current bounding box to calculate offset
+            var bbox = element.get_BoundingBox(null);
+            if (bbox == null) return;
+
+            XYZ currentMin, currentMax;
+            if (!TryGetWorldAabb(bbox, out currentMin, out currentMax)) return;
+
+            var currentCenter = (currentMin + currentMax) / 2.0;
+            var newCenter = new XYZ(cmd.NewCenterX.Value, cmd.NewCenterY.Value, cmd.NewCenterZ.Value);
+            var translation = newCenter - currentCenter;
+
+            using (var tx = new Transaction(doc, "RevitSync: MOVE_ELEMENT"))
+            {
+                tx.Start();
+                ElementTransformUtils.MoveElement(doc, elementId, translation);
+                tx.Commit();
+            }
+        }
 
         private void CreateBoxDirectShape(Document doc, GeometryCommandDto cmd, BoxDto b)
         {
@@ -88,6 +168,49 @@ namespace RevitSync.Addin
             loop.Append(Line.CreateBound(p01, p00));
             return loop;
         }
+
+        private static bool TryGetWorldAabb(BoundingBoxXYZ bbox, out XYZ minWorld, out XYZ maxWorld)
+        {
+            minWorld = null;
+            maxWorld = null;
+
+            if (bbox == null || bbox.Min == null || bbox.Max == null)
+                return false;
+
+            Transform t = bbox.Transform ?? Transform.Identity;
+
+            double minX = double.PositiveInfinity, minY = double.PositiveInfinity, minZ = double.PositiveInfinity;
+            double maxX = double.NegativeInfinity, maxY = double.NegativeInfinity, maxZ = double.NegativeInfinity;
+
+            XYZ bmin = bbox.Min;
+            XYZ bmax = bbox.Max;
+
+            double[] xs = { bmin.X, bmax.X };
+            double[] ys = { bmin.Y, bmax.Y };
+            double[] zs = { bmin.Z, bmax.Z };
+
+            for (int xi = 0; xi < 2; xi++)
+            for (int yi = 0; yi < 2; yi++)
+            for (int zi = 0; zi < 2; zi++)
+            {
+                XYZ local = new XYZ(xs[xi], ys[yi], zs[zi]);
+                XYZ w = t.OfPoint(local);
+
+                if (w.X < minX) minX = w.X;
+                if (w.Y < minY) minY = w.Y;
+                if (w.Z < minZ) minZ = w.Z;
+
+                if (w.X > maxX) maxX = w.X;
+                if (w.Y > maxY) maxY = w.Y;
+                if (w.Z > maxZ) maxZ = w.Z;
+            }
+
+            if (double.IsInfinity(minX) || double.IsInfinity(maxX))
+                return false;
+
+            minWorld = new XYZ(minX, minY, minZ);
+            maxWorld = new XYZ(maxX, maxY, maxZ);
+            return true;
+        }
     }
 }
-

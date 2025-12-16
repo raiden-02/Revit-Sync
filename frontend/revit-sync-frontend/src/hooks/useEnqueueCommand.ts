@@ -14,9 +14,26 @@ export type AddBoxesCommand = {
   }>;
 };
 
+export type DeleteElementsCommand = {
+  projectName: string;
+  type: "DELETE_ELEMENTS";
+  elementIds: string[];
+};
+
+export type MoveElementCommand = {
+  projectName: string;
+  type: "MOVE_ELEMENT";
+  targetElementId: string;
+  newCenterX: number;
+  newCenterY: number;
+  newCenterZ: number;
+};
+
+export type GeometryCommand = AddBoxesCommand | DeleteElementsCommand | MoveElementCommand;
+
 export function useEnqueueCommand() {
   return useMutation({
-    mutationFn: async (cmd: AddBoxesCommand) => {
+    mutationFn: async (cmd: GeometryCommand) => {
       const r = await fetch("http://localhost:5245/api/commands", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -27,4 +44,3 @@ export function useEnqueueCommand() {
     },
   });
 }
-

@@ -13,6 +13,8 @@ namespace RevitSync.Api.Controllers
         public class GeometryPrimitiveDto
         {
             public string Category { get; set; } = "";
+            public string ElementId { get; set; } = ""; // Revit ElementId for selection/manipulation
+            public bool IsWebCreated { get; set; } = false; // True if created via web UI
             public double CenterX { get; set; }
             public double CenterY { get; set; }
             public double CenterZ { get; set; }

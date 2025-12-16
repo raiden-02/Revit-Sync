@@ -20,6 +20,8 @@ namespace RevitSync.Addin
         private class GeometryPrimitiveDto
         {
             public string Category { get; set; } = "";
+            public string ElementId { get; set; } = ""; // Revit ElementId for selection/manipulation
+            public bool IsWebCreated { get; set; } = false; // True if created via web UI
             public double CenterX { get; set; }
             public double CenterY { get; set; }
             public double CenterZ { get; set; }
@@ -92,9 +94,19 @@ namespace RevitSync.Addin
                     double centerY = (min.Y + max.Y) / 2.0;
                     double centerZ = (min.Z + max.Z) / 2.0;
 
+                    // Check if this is a web-created DirectShape
+                    bool isWebCreated = false;
+                    var ds = element as DirectShape;
+                    if (ds != null && ds.ApplicationId == "RevitSync")
+                    {
+                        isWebCreated = true;
+                    }
+
                     primitives.Add(new GeometryPrimitiveDto
                     {
                         Category = catName,
+                        ElementId = element.Id.ToString(),
+                        IsWebCreated = isWebCreated,
                         CenterX = centerX,
                         CenterY = centerY,
                         CenterZ = centerZ,

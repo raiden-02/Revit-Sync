@@ -1,5 +1,5 @@
-import { Canvas } from "@react-three/fiber";
-import { Environment } from "@react-three/drei";
+import { Canvas, useThree } from "@react-three/fiber";
+import { Environment, TransformControls } from "@react-three/drei";
 import { Suspense, useMemo, useState, useCallback, useEffect, useRef } from "react";
 import * as THREE from "three";
 import { ViewCube, type ViewPreset } from "./ViewCube";
@@ -8,6 +8,8 @@ import { useEnqueueCommand } from "../hooks/useEnqueueCommand";
 
 export type GeometryPrimitive = {
   category: string;
+  elementId?: string;
+  isWebCreated?: boolean;
   centerX: number;
   centerY: number;
   centerZ: number;
@@ -22,50 +24,133 @@ export type GeometrySnapshot = {
   primitives: GeometryPrimitive[];
 };
 
-function colorForCategory(category: string): string {
+function colorForCategory(category: string, isWebCreated?: boolean): string {
+  if (isWebCreated) return "#a855f7";
   const key = category.toLowerCase();
   if (key.includes("wall")) return "#4ade80";
   if (key.includes("column")) return "#60a5fa";
   if (key.includes("floor")) return "#f97316";
-  if (key.includes("webbox") || key.includes("generic")) return "#a855f7"; // Purple for web-created boxes
+  if (key.includes("generic")) return "#a855f7";
   return "#e5e7eb";
 }
 
-function PrimitiveBox({ primitive, isPending = false }: { primitive: GeometryPrimitive; isPending?: boolean }) {
-  const color = colorForCategory(primitive.category);
-  const position: [number, number, number] = [
-    primitive.centerX,
-    primitive.centerZ, // Revit Z (up) -> Three Y (up)
-    -primitive.centerY, // Revit Y -> Three -Z
-  ];
+function threeToRevit(p: THREE.Vector3) {
+  return { x: p.x, y: -p.z, z: p.y };
+}
 
-  const scale: [number, number, number] = [
-    primitive.sizeX,
-    primitive.sizeZ,
-    primitive.sizeY,
-  ];
+// Box component that reports its mesh via callback
+type SelectableBoxProps = {
+  primitive: GeometryPrimitive;
+  isSelected: boolean;
+  isPending?: boolean;
+  onSelect: () => void;
+  onMeshReady?: (mesh: THREE.Mesh | null) => void;
+};
+
+function SelectableBox({ primitive, isSelected, isPending = false, onSelect, onMeshReady }: SelectableBoxProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const color = colorForCategory(primitive.category, primitive.isWebCreated);
+  const position: [number, number, number] = [primitive.centerX, primitive.centerZ, -primitive.centerY];
+  const scale: [number, number, number] = [primitive.sizeX, primitive.sizeZ, primitive.sizeY];
+
+  // Report mesh to parent when selected
+  useEffect(() => {
+    if (isSelected && onMeshReady) {
+      onMeshReady(meshRef.current);
+    }
+  }, [isSelected, onMeshReady]);
 
   return (
-    <mesh position={position} scale={scale} castShadow receiveShadow>
+    <mesh
+      ref={meshRef}
+      position={position}
+      scale={scale}
+      castShadow
+      receiveShadow
+      onClick={(e) => { e.stopPropagation(); onSelect(); }}
+    >
       <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial 
-        color={color} 
-        metalness={0.1} 
+      <meshStandardMaterial
+        color={isSelected ? "#facc15" : color}
+        metalness={0.1}
         roughness={0.7}
-        transparent={isPending}
-        opacity={isPending ? 0.6 : 1}
+        transparent={isPending || isSelected}
+        opacity={isPending ? 0.6 : isSelected ? 0.9 : 1}
       />
+      {isSelected && (
+        <lineSegments>
+          <edgesGeometry args={[new THREE.BoxGeometry(1, 1, 1)]} />
+          <lineBasicMaterial color="#facc15" linewidth={2} />
+        </lineSegments>
+      )}
     </mesh>
   );
 }
 
-// Convert Three coords -> Revit coords
-function threeToRevit(p: THREE.Vector3) {
-  return {
-    x: p.x,
-    y: -p.z,
-    z: p.y,
-  };
+// Placement helper
+function PlacementHelper({ enabled, onPlace, boxSize, groundLevel }: { enabled: boolean; onPlace: (p: THREE.Vector3) => void; boxSize: number; groundLevel: number }) {
+  const { camera, gl, raycaster, pointer } = useThree();
+  const groundPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -groundLevel), [groundLevel]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const handleClick = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      raycaster.setFromCamera(pointer, camera);
+      const intersection = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
+        intersection.y = groundLevel + boxSize / 2;
+        onPlace(intersection);
+      } else {
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        const point = camera.position.clone().add(forward.multiplyScalar(50));
+        point.y = groundLevel + boxSize / 2;
+        onPlace(point);
+      }
+    };
+    gl.domElement.addEventListener("click", handleClick);
+    return () => gl.domElement.removeEventListener("click", handleClick);
+  }, [enabled, camera, gl, raycaster, pointer, groundPlane, groundLevel, boxSize, onPlace]);
+
+  return null;
+}
+
+// TransformControls wrapper that disables orbit while dragging
+function DraggableTransform({ 
+  mesh, 
+  onDragStart, 
+  onDragEnd 
+}: { 
+  mesh: THREE.Mesh; 
+  onDragStart: () => void; 
+  onDragEnd: (position: THREE.Vector3) => void;
+}) {
+  const transformRef = useRef<any>(null);
+
+  useEffect(() => {
+    const controls = transformRef.current;
+    if (!controls) return;
+
+    const handleChange = (event: { value: boolean }) => {
+      if (event.value) {
+        onDragStart();
+      } else {
+        onDragEnd(mesh.position.clone());
+      }
+    };
+
+    controls.addEventListener('dragging-changed', handleChange);
+    return () => controls.removeEventListener('dragging-changed', handleChange);
+  }, [mesh, onDragStart, onDragEnd]);
+
+  return (
+    <TransformControls
+      ref={transformRef}
+      object={mesh}
+      mode="translate"
+      size={0.8}
+    />
+  );
 }
 
 export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
@@ -74,113 +159,102 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
   const [presetNonce, setPresetNonce] = useState(0);
 
   const enqueue = useEnqueueCommand();
-  const [boxSize, setBoxSize] = useState(10); // feet, demo default
-  
-  // Optimistic pending boxes - shown immediately in frontend
+  const [boxSize, setBoxSize] = useState(10);
+  const [placementMode, setPlacementMode] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [selectedMesh, setSelectedMesh] = useState<THREE.Mesh | null>(null);
   const [pendingBoxes, setPendingBoxes] = useState<GeometryPrimitive[]>([]);
-  
-  // Track snapshot timestamp to clear pending boxes on new export
   const lastTimestampRef = useRef(snapshot.timestampUtc);
-  
-  // Clear ALL pending boxes when a new snapshot arrives (Revit re-exported)
+
+  // Clear on new snapshot
   useEffect(() => {
     if (snapshot.timestampUtc !== lastTimestampRef.current) {
       lastTimestampRef.current = snapshot.timestampUtc;
-      setPendingBoxes([]); // Clear all pending - snapshot is now source of truth
+      setPendingBoxes([]);
+      setSelectedElementId(null);
+      setSelectedMesh(null);
     }
   }, [snapshot.timestampUtc]);
 
-  // Combine snapshot primitives with pending boxes for bounds calculation
-  const allPrimitives = useMemo(() => {
-    return [...(snapshot.primitives ?? []), ...pendingBoxes];
-  }, [snapshot.primitives, pendingBoxes]);
+  // Clear mesh when deselected
+  useEffect(() => {
+    if (!selectedElementId) {
+      setSelectedMesh(null);
+    }
+  }, [selectedElementId]);
+
+  const allPrimitives = useMemo(() => [...(snapshot.primitives ?? []), ...pendingBoxes], [snapshot.primitives, pendingBoxes]);
 
   const bounds: SceneBounds = useMemo(() => {
     if (!allPrimitives.length) return null;
-
-    let minX = Infinity,
-      maxX = -Infinity;
-    let minY = Infinity,
-      maxY = -Infinity;
-    let minZ = Infinity,
-      maxZ = -Infinity;
-
-    for (const primitive of allPrimitives) {
-      const cx = primitive.centerX;
-      const cy = primitive.centerZ;
-      const cz = -primitive.centerY;
-      const sx = primitive.sizeX;
-      const sy = primitive.sizeZ;
-      const sz = primitive.sizeY;
-
-      const x0 = cx - sx / 2;
-      const x1 = cx + sx / 2;
-      const y0 = cy - sy / 2;
-      const y1 = cy + sy / 2;
-      const z0 = cz - sz / 2;
-      const z1 = cz + sz / 2;
-
-      if (x0 < minX) minX = x0;
-      if (x1 > maxX) maxX = x1;
-      if (y0 < minY) minY = y0;
-      if (y1 > maxY) maxY = y1;
-      if (z0 < minZ) minZ = z0;
-      if (z1 > maxZ) maxZ = z1;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const p of allPrimitives) {
+      const cx = p.centerX, cy = p.centerZ, cz = -p.centerY;
+      const sx = p.sizeX, sy = p.sizeZ, sz = p.sizeY;
+      minX = Math.min(minX, cx - sx / 2); maxX = Math.max(maxX, cx + sx / 2);
+      minY = Math.min(minY, cy - sy / 2); maxY = Math.max(maxY, cy + sy / 2);
+      minZ = Math.min(minZ, cz - sz / 2); maxZ = Math.max(maxZ, cz + sz / 2);
     }
-
-    const sizeX = maxX - minX;
-    const sizeY = maxY - minY;
-    const sizeZ = maxZ - minZ;
-
-    const center: [number, number, number] = [
-      (minX + maxX) / 2,
-      (minY + maxY) / 2,
-      (minZ + maxZ) / 2,
-    ];
-
-    return { center, size: Math.max(sizeX, sizeY, sizeZ) };
+    return { center: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2] as [number, number, number], size: Math.max(maxX - minX, maxY - minY, maxZ - minZ) };
   }, [allPrimitives]);
 
-  const cameraDistance = useMemo(() => {
-    if (!bounds) return 150;
-    return Math.max(30, bounds.size * 1.6);
-  }, [bounds]);
+  const cameraDistance = useMemo(() => (bounds ? Math.max(30, bounds.size * 1.6) : 150), [bounds]);
+  const target = useMemo(() => (bounds ? new THREE.Vector3(...bounds.center) : new THREE.Vector3()), [bounds]);
 
-  const target = useMemo(() => {
-    if (!bounds) return new THREE.Vector3(0, 0, 0);
-    return new THREE.Vector3(bounds.center[0], bounds.center[1], bounds.center[2]);
-  }, [bounds]);
+  const groundLevel = useMemo(() => {
+    if (!allPrimitives.length) return 0;
+    let minY = Infinity;
+    for (const p of allPrimitives) minY = Math.min(minY, p.centerZ - p.sizeZ / 2);
+    return minY === Infinity ? 0 : minY;
+  }, [allPrimitives]);
 
-  const addBox = useCallback(async () => {
-    // Place at current scene center
-    const revit = threeToRevit(target);
+  const selectedPrimitive = useMemo(() => {
+    if (!selectedElementId) return null;
+    return snapshot.primitives?.find((p) => p.elementId === selectedElementId) ?? null;
+  }, [selectedElementId, snapshot.primitives]);
 
-    const newBox: GeometryPrimitive = {
-      category: "WebBox",
-      centerX: revit.x,
-      centerY: revit.y,
-      centerZ: revit.z,
-      sizeX: boxSize,
-      sizeY: boxSize,
-      sizeZ: boxSize,
-    };
-
-    // Optimistically add to pending boxes immediately
-    setPendingBoxes(prev => [...prev, newBox]);
-
+  const addBoxAtPoint = useCallback(async (threePoint: THREE.Vector3) => {
+    const revit = threeToRevit(threePoint);
+    const newBox: GeometryPrimitive = { category: "WebBox", isWebCreated: true, centerX: revit.x, centerY: revit.y, centerZ: revit.z, sizeX: boxSize, sizeY: boxSize, sizeZ: boxSize };
+    setPendingBoxes((prev) => [...prev, newBox]);
+    setPlacementMode(false);
     try {
-      await enqueue.mutateAsync({
-        projectName: snapshot.projectName,
-        type: "ADD_BOXES",
-        boxes: [newBox],
-      });
+      await enqueue.mutateAsync({ projectName: snapshot.projectName, type: "ADD_BOXES", boxes: [newBox] });
     } catch {
-      // Remove from pending if failed
-      setPendingBoxes(prev => prev.filter(b => b !== newBox));
+      setPendingBoxes((prev) => prev.filter((b) => b !== newBox));
     }
-  }, [target, boxSize, snapshot.projectName, enqueue]);
+  }, [boxSize, snapshot.projectName, enqueue]);
+
+  const deleteSelected = useCallback(async () => {
+    if (!selectedElementId) return;
+    try {
+      await enqueue.mutateAsync({ projectName: snapshot.projectName, type: "DELETE_ELEMENTS", elementIds: [selectedElementId] });
+      setSelectedElementId(null);
+      setSelectedMesh(null);
+    } catch {}
+  }, [selectedElementId, snapshot.projectName, enqueue]);
+
+  const moveElement = useCallback(async (elementId: string, newPosition: THREE.Vector3) => {
+    const revit = threeToRevit(newPosition);
+    try {
+      await enqueue.mutateAsync({ projectName: snapshot.projectName, type: "MOVE_ELEMENT", targetElementId: elementId, newCenterX: revit.x, newCenterY: revit.y, newCenterZ: revit.z });
+      setSelectedElementId(null);
+      setSelectedMesh(null);
+    } catch {}
+  }, [snapshot.projectName, enqueue]);
+
+  const handleDragStart = useCallback(() => setIsDragging(true), []);
+  const handleDragEnd = useCallback((position: THREE.Vector3) => {
+    setIsDragging(false);
+    if (selectedElementId) {
+      moveElement(selectedElementId, position);
+    }
+  }, [selectedElementId, moveElement]);
 
   const totalCount = count + pendingBoxes.length;
+  const canMove = selectedPrimitive?.isWebCreated && selectedMesh && !placementMode;
 
   return (
     <div className="fixed inset-0 bg-slate-950 text-slate-100">
@@ -192,73 +266,96 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
           {pendingBoxes.length > 0 && <span className="text-purple-400"> ({pendingBoxes.length} pending)</span>}
           {" "}• {new Date(snapshot.timestampUtc).toLocaleTimeString()}
         </div>
-        <div className="mt-2 text-[11px] text-slate-400">
-          LMB: Orbit • MMB: Pan • Scroll: Zoom • RMB+Mouse: Look • RMB+WASD: Fly
-        </div>
+        <div className="mt-2 text-[11px] text-slate-400">LMB: Orbit • MMB: Pan • Scroll: Zoom • RMB+Mouse: Look • RMB+WASD: Fly</div>
+        {placementMode && <div className="mt-2 text-xs text-yellow-400 font-semibold">Click anywhere to place a box</div>}
+        {isDragging && <div className="mt-2 text-xs text-green-400 font-semibold">Dragging... release to move</div>}
       </div>
 
-      {/* Web -> Revit controls */}
+      {/* Controls */}
       <div className="absolute left-4 bottom-4 z-10 w-[340px] rounded-xl bg-slate-950/70 backdrop-blur border border-slate-800 px-3 py-3 text-sm shadow-lg">
         <div className="font-semibold mb-2">Web → Revit</div>
-
         <label className="block text-xs text-slate-300 mb-1">Box size (feet)</label>
-        <input
-          className="w-full rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100"
-          type="number"
-          value={boxSize}
-          min={1}
-          step={1}
-          onChange={(e) => setBoxSize(Number(e.target.value))}
-        />
-
+        <input className="w-full rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100" type="number" value={boxSize} min={1} step={1} onChange={(e) => setBoxSize(Number(e.target.value))} />
         <button
-          className="mt-2 w-full rounded-md bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-3 py-2 font-semibold"
-          onClick={addBox}
+          className={`w-full mt-2 rounded-md px-3 py-2 font-semibold ${placementMode ? "bg-yellow-600 hover:bg-yellow-500" : "bg-blue-600 hover:bg-blue-500"} disabled:opacity-50`}
+          onClick={() => setPlacementMode(!placementMode)}
           disabled={enqueue.isPending || !bounds}
         >
-          {enqueue.isPending ? "Sending…" : "Add Box in Revit (at scene center)"}
+          {placementMode ? "Cancel Placement" : "Click to Place"}
         </button>
-
-        {enqueue.isError && (
-          <div className="mt-2 text-xs text-red-400">
-            {(enqueue.error as Error).message}
+        {enqueue.isError && <div className="mt-2 text-xs text-red-400">{(enqueue.error as Error).message}</div>}
+        {selectedPrimitive && (
+          <div className="mt-3 pt-3 border-t border-slate-700">
+            <div className="text-xs text-slate-300 mb-2"><b>Selected:</b> {selectedPrimitive.category} (ID: {selectedPrimitive.elementId})</div>
+            {selectedPrimitive.isWebCreated ? (
+              <>
+                <div className="text-[11px] text-green-400 mb-2">Drag arrows to move • Click delete to remove</div>
+                <button className="w-full rounded-md bg-red-600 hover:bg-red-500 disabled:opacity-50 px-3 py-2 font-semibold" onClick={deleteSelected} disabled={enqueue.isPending}>Delete from Revit</button>
+              </>
+            ) : (
+              <div className="text-[11px] text-slate-500 italic">Only web-created elements can be moved/deleted</div>
+            )}
           </div>
         )}
-        <div className="mt-2 text-[11px] text-slate-400">
-          Box appears immediately • Revit creates DirectShape • Re-export to sync
-        </div>
+        <div className="mt-2 text-[11px] text-slate-400">Click to select • Drag arrows to move • Re-export to sync</div>
       </div>
 
       <div className="absolute right-4 top-4 z-10">
-        <ViewCube onSelect={(p) => { setViewPreset(p); setPresetNonce(n => n + 1); }} />
+        <ViewCube onSelect={(p) => { setViewPreset(p); setPresetNonce((n) => n + 1); }} />
       </div>
 
       <Canvas
         shadows
-        style={{ width: "100%", height: "100%" }}
+        style={{ width: "100%", height: "100%", cursor: placementMode ? "crosshair" : "auto" }}
         camera={{ position: [0, 80, cameraDistance], fov: 55, near: 0.1, far: 100000 }}
+        onPointerMissed={() => { if (!isDragging) { setSelectedElementId(null); setSelectedMesh(null); } }}
       >
         <color attach="background" args={["#020617"]} />
         <hemisphereLight intensity={0.6} groundColor="#020617" />
         <directionalLight position={[50, 80, 40]} intensity={1.2} castShadow />
 
-        <CameraControls
-          target={target}
-          bounds={bounds}
-          cameraDistance={cameraDistance}
-          viewPreset={viewPreset}
-          presetNonce={presetNonce}
-        />
+        <CameraControls target={target} bounds={bounds} cameraDistance={cameraDistance} viewPreset={viewPreset} presetNonce={presetNonce} />
+        <PlacementHelper enabled={placementMode} onPlace={addBoxAtPoint} boxSize={boxSize} groundLevel={groundLevel} />
+        {placementMode && <gridHelper args={[1000, 100, "#334155", "#1e293b"]} position={[target.x, groundLevel, target.z]} />}
 
         <Suspense fallback={null}>
-          {/* Render snapshot primitives */}
-          {snapshot.primitives?.map((primitive, index) => (
-            <PrimitiveBox key={`snapshot-${index}`} primitive={primitive} />
-          ))}
-          {/* Render pending boxes (semi-transparent) */}
+          {snapshot.primitives?.map((primitive, index) => {
+            const isSelected = primitive.elementId === selectedElementId;
+            const isMovable = isSelected && primitive.isWebCreated;
+
+            return (
+              <SelectableBox
+                key={`box-${primitive.elementId || index}`}
+                primitive={primitive}
+                isSelected={isSelected}
+                onSelect={() => {
+                  if (!placementMode && primitive.elementId) {
+                    if (primitive.elementId === selectedElementId) {
+                      setSelectedElementId(null);
+                      setSelectedMesh(null);
+                    } else {
+                      setSelectedElementId(primitive.elementId);
+                    }
+                  }
+                }}
+                onMeshReady={isMovable ? setSelectedMesh : undefined}
+              />
+            );
+          })}
+
           {pendingBoxes.map((primitive, index) => (
-            <PrimitiveBox key={`pending-${index}`} primitive={primitive} isPending />
+            <SelectableBox key={`pending-${index}`} primitive={primitive} isSelected={false} isPending onSelect={() => {}} />
           ))}
+
+          {/* TransformControls for selected web-created element */}
+          {canMove && selectedMesh && (
+            <DraggableTransform 
+              mesh={selectedMesh} 
+              onDragStart={handleDragStart} 
+              onDragEnd={handleDragEnd} 
+            />
+          )}
+
           <Environment preset="city" />
         </Suspense>
       </Canvas>

@@ -14,10 +14,20 @@ namespace RevitSync.Api.Controllers
             public string CommandId { get; set; } = Guid.NewGuid().ToString("N");
             public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
-            // e.g. "ADD_BOXES"
+            // "ADD_BOXES", "DELETE_ELEMENTS", "MOVE_ELEMENT"
             public string Type { get; set; } = "ADD_BOXES";
 
+            // For ADD_BOXES
             public List<BoxDto> Boxes { get; set; } = new();
+
+            // For DELETE_ELEMENTS - list of element IDs to delete
+            public List<string> ElementIds { get; set; } = new();
+
+            // For MOVE_ELEMENT - single element move
+            public string? TargetElementId { get; set; }
+            public double? NewCenterX { get; set; }
+            public double? NewCenterY { get; set; }
+            public double? NewCenterZ { get; set; }
         }
 
         // Box in REVIT WORLD COORDINATES.
@@ -42,7 +52,27 @@ namespace RevitSync.Api.Controllers
             if (cmd == null) return BadRequest("Invalid payload.");
             if (string.IsNullOrWhiteSpace(cmd.ProjectName)) return BadRequest("ProjectName is required.");
             if (string.IsNullOrWhiteSpace(cmd.Type)) return BadRequest("Type is required.");
-            if (cmd.Boxes == null || cmd.Boxes.Count == 0) return BadRequest("Boxes is required.");
+
+            // Validate based on command type
+            switch (cmd.Type)
+            {
+                case "ADD_BOXES":
+                    if (cmd.Boxes == null || cmd.Boxes.Count == 0)
+                        return BadRequest("Boxes is required for ADD_BOXES.");
+                    break;
+                case "DELETE_ELEMENTS":
+                    if (cmd.ElementIds == null || cmd.ElementIds.Count == 0)
+                        return BadRequest("ElementIds is required for DELETE_ELEMENTS.");
+                    break;
+                case "MOVE_ELEMENT":
+                    if (string.IsNullOrWhiteSpace(cmd.TargetElementId))
+                        return BadRequest("TargetElementId is required for MOVE_ELEMENT.");
+                    if (cmd.NewCenterX == null || cmd.NewCenterY == null || cmd.NewCenterZ == null)
+                        return BadRequest("NewCenterX/Y/Z are required for MOVE_ELEMENT.");
+                    break;
+                default:
+                    return BadRequest($"Unknown command type: {cmd.Type}");
+            }
 
             cmd.CreatedUtc = DateTime.UtcNow;
 
@@ -75,4 +105,3 @@ namespace RevitSync.Api.Controllers
         }
     }
 }
-
