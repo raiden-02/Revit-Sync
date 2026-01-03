@@ -14,8 +14,8 @@ namespace RevitSync.Addin
 
             var view = uidoc.ActiveView;
 
-            // export (silent)
-            var result = GeometryExporter.Export(doc, view, showNoElementsAsSuccess: true);
+            // Export with selection sync
+            var result = GeometryExporter.Export(doc, view, showNoElementsAsSuccess: true, uidoc: uidoc);
 
             // System.Diagnostics.Debug.WriteLine($"[RevitSync] Auto-export: {result.PrimitiveCount} primitives, success={result.Success}");
         }

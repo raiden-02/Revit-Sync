@@ -128,6 +128,7 @@ export type GeometryPrimitive = {
 export type GeometrySnapshot = {
   projectName: string;
   timestampUtc: string;
+  selectedElementIds?: string[];
   primitives: GeometryPrimitive[];
 };
 
@@ -149,12 +150,13 @@ function threeToRevit(p: THREE.Vector3) {
 type SelectableBoxProps = {
   primitive: GeometryPrimitive;
   isSelected: boolean;
+  isRevitSelected?: boolean; // Selected in Revit (synced from backend)
   isPending?: boolean;
   onSelect: () => void;
   onMeshReady?: (mesh: THREE.Mesh | null) => void;
 };
 
-function SelectableBox({ primitive, isSelected, isPending = false, onSelect, onMeshReady }: SelectableBoxProps) {
+function SelectableBox({ primitive, isSelected, isRevitSelected = false, isPending = false, onSelect, onMeshReady }: SelectableBoxProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const color = colorForCategory(primitive.category, primitive.isWebCreated);
   const position: [number, number, number] = [primitive.centerX, primitive.centerZ, -primitive.centerY];
@@ -167,6 +169,11 @@ function SelectableBox({ primitive, isSelected, isPending = false, onSelect, onM
     }
   }, [isSelected, onMeshReady]);
 
+  // Determine visual state: web selection (yellow) > revit selection (cyan) > normal
+  const displayColor = isSelected ? "#facc15" : isRevitSelected ? "#22d3d3" : color;
+  const outlineColor = isSelected ? "#facc15" : "#22d3d3";
+  const showOutline = isSelected || isRevitSelected;
+
   return (
     <mesh
       ref={meshRef}
@@ -178,16 +185,16 @@ function SelectableBox({ primitive, isSelected, isPending = false, onSelect, onM
     >
       <boxGeometry args={[1, 1, 1]} />
       <meshStandardMaterial
-        color={isSelected ? "#facc15" : color}
+        color={displayColor}
         metalness={0.1}
         roughness={0.7}
-        transparent={isPending || isSelected}
-        opacity={isPending ? 0.6 : isSelected ? 0.9 : 1}
+        transparent={isPending || isSelected || isRevitSelected}
+        opacity={isPending ? 0.6 : (isSelected || isRevitSelected) ? 0.9 : 1}
       />
-      {isSelected && (
+      {showOutline && (
         <lineSegments>
           <edgesGeometry args={[new THREE.BoxGeometry(1, 1, 1)]} />
-          <lineBasicMaterial color="#facc15" linewidth={2} />
+          <lineBasicMaterial color={outlineColor} linewidth={2} />
         </lineSegments>
       )}
     </mesh>
@@ -352,6 +359,16 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
     } catch {}
   }, [snapshot.projectName, enqueue]);
 
+  // Send selection to Revit (Web → Revit selection sync)
+  const selectInRevit = useCallback(async (elementIds: string[]) => {
+    try {
+      await enqueue.mutateAsync({ projectName: snapshot.projectName, type: "SELECT_ELEMENTS", elementIds });
+    } catch {}
+  }, [snapshot.projectName, enqueue]);
+
+  // Revit selection state from snapshot (Revit → Web selection sync)
+  const revitSelectedIds = useMemo(() => new Set(snapshot.selectedElementIds ?? []), [snapshot.selectedElementIds]);
+
   const handleDragStart = useCallback(() => setIsDragging(true), []);
   const handleDragEnd = useCallback((position: THREE.Vector3) => {
     setIsDragging(false);
@@ -371,6 +388,7 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
         <div className="text-xs text-slate-300">
           Project: <b>{snapshot.projectName}</b> • Primitives: <b>{totalCount}</b>
           {pendingBoxes.length > 0 && <span className="text-purple-400"> ({pendingBoxes.length} pending)</span>}
+          {revitSelectedIds.size > 0 && <span className="text-cyan-400"> • Revit: {revitSelectedIds.size} selected</span>}
           {" "}• {new Date(snapshot.timestampUtc).toLocaleTimeString()}
         </div>
         <div className="mt-2 text-[11px] text-slate-400">LMB: Orbit • MMB: Pan • Scroll: Zoom • RMB+Mouse: Look • RMB+WASD: Fly</div>
@@ -394,6 +412,16 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
         {selectedPrimitive && (
           <div className="mt-3 pt-3 border-t border-slate-700">
             <div className="text-xs text-slate-300 mb-2"><b>Selected:</b> {selectedPrimitive.category} (ID: {selectedPrimitive.elementId})</div>
+            
+            {/* Select in Revit button - syncs selection to Revit */}
+            <button 
+              className="w-full rounded-md bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 px-3 py-2 font-semibold mb-2" 
+              onClick={() => selectedPrimitive.elementId && selectInRevit([selectedPrimitive.elementId])} 
+              disabled={enqueue.isPending}
+            >
+              Select in Revit
+            </button>
+            
             {selectedPrimitive.isWebCreated ? (
               <>
                 <div className="text-[11px] text-green-400 mb-2">Drag arrows to move • Click delete to remove</div>
@@ -436,6 +464,7 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
         <Suspense fallback={null}>
           {snapshot.primitives?.map((primitive, index) => {
             const isSelected = primitive.elementId === selectedElementId;
+            const isRevitSelected = primitive.elementId ? revitSelectedIds.has(primitive.elementId) : false;
             const isMovable = isSelected && primitive.isWebCreated;
 
             return (
@@ -443,6 +472,7 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
                 key={`box-${primitive.elementId || index}`}
                 primitive={primitive}
                 isSelected={isSelected}
+                isRevitSelected={isRevitSelected}
                 onSelect={() => {
                   if (!placementMode && primitive.elementId) {
                     if (primitive.elementId === selectedElementId) {

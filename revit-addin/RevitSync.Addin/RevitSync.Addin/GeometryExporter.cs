@@ -1,16 +1,16 @@
 using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 
 namespace RevitSync.Addin
 {
-    /// <summary>
-    /// Shared geometry export logic used by both manual ExportGeometryCommand 
-    /// and automatic DocumentChanged-triggered export.
-    /// </summary>
+    //Shared geometry export logic used by both manual ExportGeometryCommand 
+    //and automatic DocumentChanged-triggered export.
     public static class GeometryExporter
     {
         private static readonly HttpClient _http = new HttpClient
@@ -38,6 +38,7 @@ namespace RevitSync.Addin
             public string ProjectName { get; set; } = "";
             public DateTime TimestampUtc { get; set; }
             public List<GeometryPrimitiveDto> Primitives { get; set; } = new List<GeometryPrimitiveDto>();
+            public List<string> SelectedElementIds { get; set; } = new List<string>();
         }
 
         public class ExportResult
@@ -47,13 +48,9 @@ namespace RevitSync.Addin
             public string ErrorMessage { get; set; }
         }
 
-        /// <summary>
-        /// Export geometry from the document and POST to backend.
-        /// </summary>
-        /// <param name="doc">Revit Document</param>
-        /// <param name="view">View to collect visible elements from (can be null for 3D view fallback)</param>
-        /// <param name="showNoElementsAsSuccess">If true, returns success even if no elements found</param>
-        public static ExportResult Export(Document doc, View view, bool showNoElementsAsSuccess = true)
+       
+        // Export geometry from the document and POST to backend.
+        public static ExportResult Export(Document doc, View view, bool showNoElementsAsSuccess = true, UIDocument uidoc = null)
         {
             if (doc == null)
             {
@@ -62,6 +59,21 @@ namespace RevitSync.Addin
 
             AppState.ActiveProjectName = doc.Title;
             string projectName = doc.Title;
+
+            // Get current selection from Revit (for selection sync)
+            var selectedElementIds = new List<string>();
+            if (uidoc != null)
+            {
+                try
+                {
+                    var selection = uidoc.Selection.GetElementIds();
+                    selectedElementIds = selection.Select(id => id.ToString()).ToList();
+                }
+                catch
+                {
+                    // Ignore selection errors
+                }
+            }
 
             var categoriesToInclude = new[]
             {
@@ -156,6 +168,7 @@ namespace RevitSync.Addin
                 ProjectName = projectName,
                 TimestampUtc = DateTime.UtcNow,
                 Primitives = primitives,
+                SelectedElementIds = selectedElementIds,
             };
 
             try

@@ -29,7 +29,13 @@ export type MoveElementCommand = {
   newCenterZ: number;
 };
 
-export type GeometryCommand = AddBoxesCommand | DeleteElementsCommand | MoveElementCommand;
+export type SelectElementsCommand = {
+  projectName: string;
+  type: "SELECT_ELEMENTS";
+  elementIds: string[];
+};
+
+export type GeometryCommand = AddBoxesCommand | DeleteElementsCommand | MoveElementCommand | SelectElementsCommand;
 
 export function useEnqueueCommand() {
   return useMutation({

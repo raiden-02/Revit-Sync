@@ -7,7 +7,7 @@ namespace RevitSync.Addin
         public string ProjectName { get; set; } = "";
         public string CommandId { get; set; } = "";
         
-        // "ADD_BOXES", "DELETE_ELEMENTS", "MOVE_ELEMENT"
+        // "ADD_BOXES", "DELETE_ELEMENTS", "MOVE_ELEMENT", "SELECT_ELEMENTS"
         public string Type { get; set; } = "ADD_BOXES";
         
         // For ADD_BOXES

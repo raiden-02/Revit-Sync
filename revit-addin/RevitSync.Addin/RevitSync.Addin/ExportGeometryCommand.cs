@@ -20,8 +20,8 @@ namespace RevitSync.Addin
 
             View view = uidoc.ActiveView;
 
-            // Use shared GeometryExporter for the actual export
-            var result = GeometryExporter.Export(doc, view, showNoElementsAsSuccess: false);
+            // Use shared GeometryExporter for the actual export (with selection sync)
+            var result = GeometryExporter.Export(doc, view, showNoElementsAsSuccess: false, uidoc: uidoc);
 
             if (!result.Success)
             {

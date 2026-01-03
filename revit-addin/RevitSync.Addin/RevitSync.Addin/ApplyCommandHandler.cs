@@ -17,7 +17,8 @@ namespace RevitSync.Addin
             Pending = null;
             if (cmd == null) return;
 
-            var doc = app.ActiveUIDocument?.Document;
+            var uidoc = app.ActiveUIDocument;
+            var doc = uidoc?.Document;
             if (doc == null) return;
 
             try
@@ -33,6 +34,9 @@ namespace RevitSync.Addin
                     case "MOVE_ELEMENT":
                         ExecuteMoveElement(doc, cmd);
                         break;
+                    case "SELECT_ELEMENTS":
+                        ExecuteSelectElements(uidoc, cmd);
+                        break;
                 }
             }
             catch (Exception ex)
@@ -42,6 +46,48 @@ namespace RevitSync.Addin
         }
 
         public string GetName() => "RevitSync Apply Command Handler";
+
+        private void ExecuteSelectElements(UIDocument uidoc, GeometryCommandDto cmd)
+        {
+            if (uidoc == null) return;
+
+            var doc = uidoc.Document;
+            var elementIds = new List<ElementId>();
+
+            // Parse element IDs from command
+            if (cmd.ElementIds != null)
+            {
+                foreach (var idStr in cmd.ElementIds)
+                {
+                    if (!int.TryParse(idStr, out int idVal)) continue;
+                    
+                    var elementId = new ElementId(idVal);
+                    var element = doc.GetElement(elementId);
+                    
+                    // Only select existing elements
+                    if (element != null)
+                    {
+                        elementIds.Add(elementId);
+                    }
+                }
+            }
+
+            // Set the selection in Revit (this highlights the elements)
+            uidoc.Selection.SetElementIds(elementIds);
+
+            // Optionally zoom to the selected elements
+            if (elementIds.Count > 0)
+            {
+                try
+                {
+                    uidoc.ShowElements(elementIds);
+                }
+                catch
+                {
+                    // ShowElements can fail in some views, ignore
+                }
+            }
+        }
 
         private void ExecuteAddBoxes(Document doc, GeometryCommandDto cmd)
         {

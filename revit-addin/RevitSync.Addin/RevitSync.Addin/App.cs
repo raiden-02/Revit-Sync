@@ -1,7 +1,11 @@
+using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
+using Autodesk.Revit.UI.Events;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Timers;
 using System.Windows.Media.Imaging;
@@ -21,6 +25,11 @@ namespace RevitSync.Addin
         private static Timer _debounceTimer;
         private static volatile bool _exportPending;
         private const int DebounceMs = 500; // Wait 500ms after last change before exporting
+
+        // Selection change tracking (for selection sync)
+        private static HashSet<long> _lastSelectionIds = new HashSet<long>();
+        private static DateTime _lastSelectionCheck = DateTime.MinValue;
+        private const int SelectionCheckIntervalMs = 300; // Check selection every 300ms
 
         public Result OnStartup(UIControlledApplication app)
         {
@@ -93,7 +102,45 @@ namespace RevitSync.Addin
             // Subscribe to DocumentChanged event
             app.ControlledApplication.DocumentChanged += OnDocumentChanged;
 
+            // Subscribe to Idling event for selection change detection
+            app.Idling += OnIdling;
+
             return Result.Succeeded;
+        }
+
+        private static void OnIdling(object sender, IdlingEventArgs e)
+        {
+            // Throttle selection checks to avoid performance impact
+            if ((DateTime.Now - _lastSelectionCheck).TotalMilliseconds < SelectionCheckIntervalMs)
+                return;
+            _lastSelectionCheck = DateTime.Now;
+
+            try
+            {
+                var uiApp = sender as UIApplication;
+                var uidoc = uiApp?.ActiveUIDocument;
+                if (uidoc == null) return;
+
+                // Get current selection (using Value for Revit 2024+)
+                var currentIds = new HashSet<long>(
+                    uidoc.Selection.GetElementIds().Select(id => id.Value)
+                );
+
+                // Check if selection changed
+                if (!currentIds.SetEquals(_lastSelectionIds))
+                {
+                    _lastSelectionIds = currentIds;
+
+                    // Trigger export to sync selection to web
+                    _exportPending = true;
+                    _debounceTimer.Stop();
+                    _debounceTimer.Start();
+                }
+            }
+            catch
+            {
+                // Ignore errors in Idling handler
+            }
         }
 
         private static void OnDocumentChanged(object sender, DocumentChangedEventArgs e)
@@ -114,8 +161,9 @@ namespace RevitSync.Addin
 
         public Result OnShutdown(UIControlledApplication app)
         {
-            // Unsubscribe from DocumentChanged
+            // Unsubscribe from events
             try { app.ControlledApplication.DocumentChanged -= OnDocumentChanged; } catch { }
+            try { app.Idling -= OnIdling; } catch { }
 
             // Dispose debounce timer
             try { _debounceTimer?.Stop(); _debounceTimer?.Dispose(); } catch { }

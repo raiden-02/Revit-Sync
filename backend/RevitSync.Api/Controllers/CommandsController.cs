@@ -14,7 +14,7 @@ namespace RevitSync.Api.Controllers
             public string CommandId { get; set; } = Guid.NewGuid().ToString("N");
             public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
-            // "ADD_BOXES", "DELETE_ELEMENTS", "MOVE_ELEMENT"
+            // "ADD_BOXES", "DELETE_ELEMENTS", "MOVE_ELEMENT", "SELECT_ELEMENTS"
             public string Type { get; set; } = "ADD_BOXES";
 
             // For ADD_BOXES
@@ -69,6 +69,9 @@ namespace RevitSync.Api.Controllers
                         return BadRequest("TargetElementId is required for MOVE_ELEMENT.");
                     if (cmd.NewCenterX == null || cmd.NewCenterY == null || cmd.NewCenterZ == null)
                         return BadRequest("NewCenterX/Y/Z are required for MOVE_ELEMENT.");
+                    break;
+                case "SELECT_ELEMENTS":
+                    // ElementIds can be empty (to clear selection)
                     break;
                 default:
                     return BadRequest($"Unknown command type: {cmd.Type}");

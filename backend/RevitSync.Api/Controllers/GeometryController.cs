@@ -31,6 +31,7 @@ namespace RevitSync.Api.Controllers
             public string ProjectName { get; set; } = "";
             public DateTime TimestampUtc { get; set; }
             public List<GeometryPrimitiveDto> Primitives { get; set; } = new();
+            public List<string> SelectedElementIds { get; set; } = new();
         }
 
         // In-memory store: latest snapshot per project
