@@ -13,7 +13,7 @@ function AppInner() {
     return (
       <div className="fixed inset-0 bg-slate-950 text-slate-200 grid place-items-center p-6 text-center">
         <div>
-          <div className="text-2xl font-semibold mb-2">Revit Geometry Stream</div>
+          <div className="text-2xl font-semibold mb-2">Revit Sync (Geometry Stream)</div>
           <div className="text-sm text-slate-400">
             In Revit, click <b>Generate Column Grid</b> (optional) then <b>Export Geometry</b>.
           </div>
