@@ -407,6 +407,7 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
             <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{backgroundColor: "#67e8f9"}}></span>Panels</span>
             <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{backgroundColor: "#38bdf8"}}></span>Mullions</span>
             <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{backgroundColor: "#fb923c"}}></span>Stairs</span>
+            <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{backgroundColor: "#fdba74"}}></span>Ramps</span>
             <span><span className="inline-block w-2 h-2 rounded-sm mr-1" style={{backgroundColor: "#e879f9"}}></span>Generic</span>
           </div>
         </div>
