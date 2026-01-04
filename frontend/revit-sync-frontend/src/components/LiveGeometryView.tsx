@@ -321,10 +321,22 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
     return minY === Infinity ? 0 : minY;
   }, [allPrimitives]);
 
+  // Web selection (user clicked in viewer)
   const selectedPrimitive = useMemo(() => {
     if (!selectedElementId) return null;
     return snapshot.primitives?.find((p) => p.elementId === selectedElementId) ?? null;
   }, [selectedElementId, snapshot.primitives]);
+
+  // Revit selection (synced from Revit) - show first selected if no web selection
+  const revitSelectedPrimitive = useMemo(() => {
+    if (selectedElementId) return null; // Web selection takes priority
+    const firstRevitId = snapshot.selectedElementIds?.[0];
+    if (!firstRevitId) return null;
+    return snapshot.primitives?.find((p) => p.elementId === firstRevitId) ?? null;
+  }, [selectedElementId, snapshot.selectedElementIds, snapshot.primitives]);
+
+  // Display primitive: web selection first, then Revit selection
+  const displayPrimitive = selectedPrimitive ?? revitSelectedPrimitive;
 
   const addBoxAtPoint = useCallback(async (threePoint: THREE.Vector3) => {
     const revit = threeToRevit(threePoint);
@@ -426,24 +438,31 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
           {placementMode ? "Cancel Placement" : "Click to Place"}
         </button>
         {enqueue.isError && <div className="mt-2 text-xs text-red-400">{(enqueue.error as Error).message}</div>}
-        {selectedPrimitive && (
+        {displayPrimitive && (
           <div className="mt-3 pt-3 border-t border-slate-700">
-            <div className="text-xs text-slate-300 mb-2"><b>Selected:</b> {selectedPrimitive.category} (ID: {selectedPrimitive.elementId})</div>
+            <div className="text-xs text-slate-300 mb-2">
+              <b>Selected:</b> {displayPrimitive.category} (ID: {displayPrimitive.elementId})
+              {!selectedPrimitive && <span className="text-cyan-400 ml-1">(from Revit)</span>}
+            </div>
             
-            {/* Select in Revit button - syncs selection to Revit */}
-            <button 
-              className="w-full rounded-md bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 px-3 py-2 font-semibold mb-2" 
-              onClick={() => selectedPrimitive.elementId && selectInRevit([selectedPrimitive.elementId])} 
-              disabled={enqueue.isPending}
-            >
-              Select in Revit
-            </button>
+            {/* Select in Revit button - only for web selections */}
+            {selectedPrimitive && (
+              <button 
+                className="w-full rounded-md bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 px-3 py-2 font-semibold mb-2" 
+                onClick={() => selectedPrimitive.elementId && selectInRevit([selectedPrimitive.elementId])} 
+                disabled={enqueue.isPending}
+              >
+                Select in Revit
+              </button>
+            )}
             
-            {selectedPrimitive.isWebCreated ? (
+            {displayPrimitive.isWebCreated && selectedPrimitive ? (
               <>
                 <div className="text-[11px] text-green-400 mb-2">Drag arrows to move • Click delete to remove</div>
                 <button className="w-full rounded-md bg-red-600 hover:bg-red-500 disabled:opacity-50 px-3 py-2 font-semibold" onClick={deleteSelected} disabled={enqueue.isPending}>Delete from Revit</button>
               </>
+            ) : !selectedPrimitive ? (
+              <div className="text-[11px] text-slate-500 italic">Click element in viewer to enable actions</div>
             ) : (
               <div className="text-[11px] text-slate-500 italic">Only web-created elements can be moved/deleted</div>
             )}
@@ -456,10 +475,10 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
         <ViewCube onSelect={(p) => { setViewPreset(p); setPresetNonce((n) => n + 1); }} />
       </div>
 
-      {/* Properties Panel - shows when element is selected */}
-      {selectedPrimitive && (
+      {/* Properties Panel - shows for web or Revit selection */}
+      {displayPrimitive && (
         <PropertiesPanel 
-          primitive={selectedPrimitive} 
+          primitive={displayPrimitive} 
           onClose={() => { setSelectedElementId(null); setSelectedMesh(null); }} 
         />
       )}
