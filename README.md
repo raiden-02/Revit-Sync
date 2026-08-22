@@ -1,30 +1,42 @@
 # RevitSync
 
-**Real-time bidirectional sync between Autodesk Revit and a web-based 3D viewer.**
+**A personal learning project:** bidirectional sync between Autodesk Revit and a web-based 3D viewer.
 
-### Demo Video
+> **Unofficial — not Autodesk work.** RevitSync is an independent portfolio project by [Mayur Reddy](https://github.com/raiden-02). It is **not** an Autodesk product and is **not** affiliated with, endorsed by, or sponsored by Autodesk, Inc. Autodesk and Revit are trademarks of Autodesk, Inc.
 
-[![Demo Video](https://img.youtube.com/vi/9N6vfX0DKNM/maxresdefault.jpg)](https://www.youtube.com/watch?v=9N6vfX0DKNM)
+Built to learn the Revit API while wrapping it in a small full-stack app (C# add-in → ASP.NET Core → React / Three.js). Local demo only — not production software.
+
+### Demo
+
+[![Watch the demo](https://img.youtube.com/vi/9N6vfX0DKNM/hqdefault.jpg)](https://www.youtube.com/watch?v=9N6vfX0DKNM)
+
+[youtube.com/watch?v=9N6vfX0DKNM](https://www.youtube.com/watch?v=9N6vfX0DKNM) — Revit on the left, web viewer on the right: export, selection sync, live DocumentChanged updates, and click-to-place boxes.
 
 ---
 
 ## Features
 
 ### Revit → Web
-- **Geometry Export**: Extract bounding boxes from 13 Revit categories
-- **Auto-Sync**: DocumentChanged event triggers automatic export
-- **Selection Sync**: Revit selection highlighted in web viewer (cyan)
-- **Properties Panel**: View Family, Type, Level, Area, Volume in browser
-- **Category Colors**: Each category has distinct color for visualization
+- **Geometry export**: bounding boxes from 13 Revit categories (not full meshes)
+- **Auto-sync**: `DocumentChanged` triggers a debounced re-export (500ms)
+- **Selection sync**: Revit selection highlighted in the viewer (cyan)
+- **Properties panel**: Family, Type, Level, Area, Volume, and related parameters
+- **Category colors**: one color per category for massing visualization
 
 ### Web → Revit
-- **Click-to-Place**: Add boxes in browser, appear as DirectShapes in Revit
-- **Drag-to-Move**: Reposition web-created elements with transform handles
-- **Delete Elements**: Remove web-created elements from both sides
-- **Selection Sync**: Click element in web, highlights and zooms in Revit
+- **Click-to-place**: add boxes in the browser; they appear as `DirectShape` elements in Revit
+- **Drag-to-move**: reposition **web-created** elements with transform handles
+- **Delete**: remove **web-created** elements on both sides
+- **Selection sync**: click in the viewer, then “Select in Revit” to highlight and zoom
 
-### Categories Exported
+### Categories exported
 Walls, Roofs, Floors, Structural Columns, Structural Framing, Structural Foundation, Windows, Doors, Curtain Wall Panels, Curtain Wall Mullions, Stairs, Ramps, Generic Model
+
+### Intentional limits
+- In-memory API storage (lost on restart); no auth, no multi-user
+- Bounding boxes only — good for massing, not fabrication geometry
+- All three processes run on one machine (`localhost`)
+- Move/delete from the web only applies to elements tagged as created by this add-in
 
 ---
 
@@ -32,9 +44,9 @@ Walls, Roofs, Floors, Structural Columns, Structural Framing, Structural Foundat
 
 | Component | Technology |
 |-----------|------------|
-| **Revit Add-in** | C# / .NET Framework 4.8 / Revit API 2024+ |
-| **Backend API** | ASP.NET Core 9, In-memory storage, REST |
-| **Frontend** | React 18, TypeScript, Three.js (React Three Fiber), TanStack Query, TailwindCSS |
+| **Revit add-in** | C# / .NET Framework 4.8 / Revit API (project files target Revit 2026) |
+| **Backend API** | ASP.NET Core 9, in-memory store, REST + Swagger |
+| **Frontend** | React 19, TypeScript, Three.js (React Three Fiber), TanStack Query, Tailwind CSS |
 
 ---
 
@@ -76,23 +88,25 @@ Walls, Roofs, Floors, Structural Columns, Structural Framing, Structural Foundat
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Data Flow
-- **Revit → Web**: Geometry exported via POST, frontend polls GET every 2s
-- **Web → Revit**: Commands queued via POST, add-in polls GET every 500ms
-- **Latency**: ~500ms-2s
+### Data flow
+- **Revit → Web**: add-in POSTs a snapshot; frontend polls `GET /api/geometry/latest` every 2s (ETag / 304 when unchanged)
+- **Web → Revit**: frontend POSTs a command; add-in polls `GET /api/commands/next` every 1.5s and applies it on the Revit UI thread via `ExternalEvent`
+- **Typical latency**: ~1.5–2s (polling, not WebSockets)
 
 ---
 
 ## Prerequisites
 
-- **Autodesk Revit 2024+** (tested with 2024, 2025, 2026)
-- **.NET 9 SDK** (for backend)
-- **Node.js 18+** (for frontend)
-- **Visual Studio 2022** (for Revit add-in)
+- **Autodesk Revit 2026** at the default path `C:\Program Files\Autodesk\Revit 2026\` (the add-in project references those `RevitAPI.dll` / `RevitAPIUI.dll` assemblies). Other years: change `RevitYear` in the `.csproj` and copy into that year’s Addins folder.
+- **.NET 9 SDK** (or newer, with the net9.0 targeting pack) for the backend
+- **Node.js 18+** for the frontend
+- **Visual Studio 2022 or later** with .NET desktop development (for the .NET Framework 4.8 add-in)
 
 ---
 
 ## Quick Start
+
+Run the API and the viewer first, then load the add-in in Revit. Everything talks to `http://localhost:5245`.
 
 ### 1. Backend
 
@@ -100,7 +114,8 @@ Walls, Roofs, Floors, Structural Columns, Structural Framing, Structural Foundat
 cd backend/RevitSync.Api
 dotnet run
 ```
-Runs on `http://localhost:5245` | Swagger UI at `http://localhost:5245/swagger`
+
+API: `http://localhost:5245` · Swagger: `http://localhost:5245/swagger`
 
 ### 2. Frontend
 
@@ -109,48 +124,39 @@ cd frontend/revit-sync-frontend
 npm install
 npm run dev
 ```
-Runs on `http://localhost:5173`
 
-### 3. Revit Add-in
+Viewer: `http://127.0.0.1:5173` (Vite is pinned to that host and port). `http://localhost:5173` also works.
 
-1. Open `revit-addin/RevitSync.Addin/RevitSync.Addin.sln` in Visual Studio
-2. Build the solution (post-build copies DLL automatically)
-3. Create a `.addin` manifest file (see below)
-4. Restart Revit
+### 3. Revit add-in
 
-#### Addin Manifest
+1. Open `revit-addin/RevitSync.Addin/RevitSync.Addin.sln` in Visual Studio.
+2. Restore NuGet packages if prompted (`Newtonsoft.Json`).
+3. Build the solution (**Build → Build Solution**). A post-build step copies `RevitSync.Addin.dll`, `RevitSync.addin`, and the ribbon icon into:
 
-Create `RevitSync.addin` in `%APPDATA%\Autodesk\Revit\Addins\2026\`:
+   `%APPDATA%\Autodesk\Revit\Addins\2026\`
 
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<RevitAddIns>
-  <AddIn Type="Application">
-    <Name>RevitSync</Name>
-    <Assembly>RevitSync.Addin.dll</Assembly>
-    <FullClassName>RevitSync.Addin.App</FullClassName>
-    <AddInId>7AF9D8DB-6CEA-4E88-98FE-B2ED1BF112C3</AddInId>
-    <VendorId>RevitSync</VendorId>
-  </AddIn>
-</RevitAddIns>
-```
+4. Restart Revit. The **RevitSync** panel is on the **Add-Ins** tab.
+
+If you need to install the manifest by hand, copy [`revit-addin/RevitSync.Addin/RevitSync.Addin/RevitSync.addin`](revit-addin/RevitSync.Addin/RevitSync.Addin/RevitSync.addin) next to the DLL in that Addins folder. The Assembly path is the DLL file name (same directory as the `.addin`).
+
+**Revit 2025+ note:** Autodesk’s official add-in target for Revit 2025/2026 is .NET 8. This repo’s add-in is still a .NET Framework 4.8 class library (as originally written). If the add-in does not load, that mismatch is the first thing to check — this project does not retarget the add-in.
 
 ---
 
 ## Usage
 
-1. **Open Revit** with a project containing walls, floors, roofs, etc.
-2. **Click "Export Geometry"** in the RevitSync ribbon panel
-3. **Open browser** at `http://localhost:5173`
-4. **Explore the model** - orbit, pan, zoom the 3D view
-5. **Click elements** to see properties in the side panel
-6. **Click "Select in Revit"** to highlight and zoom in Revit
-7. **Select in Revit** - element highlights cyan in web viewer
-8. **Place boxes** - click "Click to Place" → click on ground
-9. **Move boxes** - select web-created box → drag transform arrows
-10. **Delete boxes** - select → click Delete button
+1. Start the backend and frontend (steps 1–2 above).
+2. Open Revit with a project that has walls, floors, roofs, etc.
+3. Click **Export Geometry** on the RevitSync ribbon.
+4. Open the viewer at `http://127.0.0.1:5173`.
+5. Orbit / pan / zoom the 3D view. Click an element for properties.
+6. **Select in Revit** highlights and zooms that element in Revit.
+7. Select in Revit — the same element highlights cyan in the viewer.
+8. **Click to Place** → click the ground plane to create a box.
+9. Select a web-created box → drag the transform arrows to move it.
+10. Select a web-created box → **Delete**.
 
-Changes sync automatically via DocumentChanged event (no manual re-export needed).
+After the first export, model edits sync automatically via `DocumentChanged` (no need to click Export again). **Generate Column Grid** is an optional test helper if you do not have a model handy.
 
 ---
 
@@ -159,21 +165,23 @@ Changes sync automatically via DocumentChanged event (no manual re-export needed
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/geometry` | POST | Ingest geometry snapshot from Revit |
-| `/api/geometry/latest` | GET | Get latest snapshot (supports ETag caching) |
-| `/api/commands` | POST | Queue command for Revit |
-| `/api/commands/next` | GET | Dequeue next command (polled by Revit) |
+| `/api/geometry/latest` | GET | Latest snapshot (ETag / `If-None-Match` → 304) |
+| `/api/commands` | POST | Queue a command for Revit |
+| `/api/commands/next` | GET | Dequeue next command (polled by the add-in) |
 
-### Command Types
+### Command types
 
 | Type | Description |
 |------|-------------|
 | `ADD_BOXES` | Create DirectShape boxes in Revit |
-| `DELETE_ELEMENTS` | Delete elements by ID |
-| `MOVE_ELEMENT` | Move element to new position |
+| `DELETE_ELEMENTS` | Delete web-created elements by id |
+| `MOVE_ELEMENT` | Move a web-created element |
 | `SELECT_ELEMENTS` | Select and zoom to elements |
 
 ---
 
 ## License
 
-MIT
+[MIT](LICENSE) © Mayur Reddy
+
+Autodesk® and Revit® are registered trademarks of Autodesk, Inc. This project is a personal learning exercise and is not an official Autodesk sample or plugin.

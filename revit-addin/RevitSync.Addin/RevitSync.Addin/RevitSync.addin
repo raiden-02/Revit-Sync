@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>RevitSync</Name>
+    <Assembly>RevitSync.Addin.dll</Assembly>
+    <FullClassName>RevitSync.Addin.App</FullClassName>
+    <AddInId>7AF9D8DB-6CEA-4E88-98FE-B2ED1BF112C3</AddInId>
+    <VendorId>RSYN</VendorId>
+    <VendorDescription>Independent personal project by Mayur Reddy. Not affiliated with Autodesk.</VendorDescription>
+  </AddIn>
+</RevitAddIns>

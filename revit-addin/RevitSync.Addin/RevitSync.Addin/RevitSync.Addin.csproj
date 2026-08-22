@@ -12,6 +12,8 @@
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
+    <RevitYear Condition="'$(RevitYear)' == ''">2026</RevitYear>
+    <RevitInstallDir Condition="'$(RevitInstallDir)' == ''">C:\Program Files\Autodesk\Revit $(RevitYear)</RevitInstallDir>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -37,10 +39,12 @@
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="RevitAPI">
-      <HintPath>..\..\..\..\..\..\..\..\..\Program Files\Autodesk\Revit 2026\RevitAPI.dll</HintPath>
+      <HintPath>$(RevitInstallDir)\RevitAPI.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="RevitAPIUI">
-      <HintPath>..\..\..\..\..\..\..\..\..\Program Files\Autodesk\Revit 2026\RevitAPIUI.dll</HintPath>
+      <HintPath>$(RevitInstallDir)\RevitAPIUI.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -68,6 +72,9 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="RevitSync.addin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Icons\revitsync-icon.png" Condition="Exists('Icons\revitsync-icon.png')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -78,15 +85,12 @@
     </PreBuildEvent>
   </PropertyGroup>
   <PropertyGroup>
-    <PostBuildEvent>REM Ensure the Revit Addins folder exists
-if not exist "%25APPDATA%25\Autodesk\Revit\Addins\2026" mkdir "%25APPDATA%25\Autodesk\Revit\Addins\2026"
-
-REM Copy the freshly built DLL to the Addins folder
-copy /Y "$(TargetPath)" "%25APPDATA%25\Autodesk\Revit\Addins\2026\RevitSync.Addin.dll"
-
-REM Copy Icons folder to Addins folder
-if not exist "%25APPDATA%25\Autodesk\Revit\Addins\2026\Icons" mkdir "%25APPDATA%25\Autodesk\Revit\Addins\2026\Icons"
-if exist "$(ProjectDir)Icons\revitsync-icon.png" copy /Y "$(ProjectDir)Icons\revitsync-icon.png" "%25APPDATA%25\Autodesk\Revit\Addins\2026\Icons\"
+    <PostBuildEvent>REM Deploy add-in files into the Revit Addins folder for $(RevitYear)
+if not exist "%25APPDATA%25\Autodesk\Revit\Addins\$(RevitYear)" mkdir "%25APPDATA%25\Autodesk\Revit\Addins\$(RevitYear)"
+copy /Y "$(TargetPath)" "%25APPDATA%25\Autodesk\Revit\Addins\$(RevitYear)\RevitSync.Addin.dll"
+copy /Y "$(ProjectDir)RevitSync.addin" "%25APPDATA%25\Autodesk\Revit\Addins\$(RevitYear)\RevitSync.addin"
+if not exist "%25APPDATA%25\Autodesk\Revit\Addins\$(RevitYear)\Icons" mkdir "%25APPDATA%25\Autodesk\Revit\Addins\$(RevitYear)\Icons"
+if exist "$(ProjectDir)Icons\revitsync-icon.png" copy /Y "$(ProjectDir)Icons\revitsync-icon.png" "%25APPDATA%25\Autodesk\Revit\Addins\$(RevitYear)\Icons\"
 </PostBuildEvent>
   </PropertyGroup>
 </Project>

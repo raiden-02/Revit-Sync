@@ -6,11 +6,11 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 [assembly: AssemblyTitle("RevitSync.Addin")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyDescription("Personal learning add-in. Independent project — not affiliated with Autodesk.")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("RevitSync.Addin")]
-[assembly: AssemblyCopyright("Copyright ©  2025")]
+[assembly: AssemblyCompany("Mayur Reddy")]
+[assembly: AssemblyProduct("RevitSync")]
+[assembly: AssemblyCopyright("Copyright © 2025 Mayur Reddy")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
