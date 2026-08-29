@@ -1,8 +1,8 @@
 # RevitSync frontend
 
-React + Three.js viewer for the RevitSync personal learning project.
+React + Three.js viewer. It polls `GET /api/geometry/latest` and POSTs commands to the local ASP.NET API. The Revit add-in is the other side of that loop.
 
-Setup, API URL, and how this fits with the add-in and backend: see the **[root README](../../README.md)**.
+Setup, ports, supported operations, and limits: **[root README](../../README.md)**.
 
 ```bash
 npm install

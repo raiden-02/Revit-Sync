@@ -1,5 +1,6 @@
 import { Canvas, useThree } from "@react-three/fiber";
 import { Environment, TransformControls } from "@react-three/drei";
+import type { TransformControls as TransformControlsImpl } from "three-stdlib";
 import { Suspense, useMemo, useState, useCallback, useEffect, useRef } from "react";
 import * as THREE from "three";
 import { ViewCube, type ViewPreset } from "./ViewCube";
@@ -236,7 +237,7 @@ function DraggableTransform({
   onDragStart: () => void; 
   onDragEnd: (position: THREE.Vector3) => void;
 }) {
-  const transformRef = useRef<any>(null);
+  const transformRef = useRef<TransformControlsImpl>(null);
 
   useEffect(() => {
     const controls = transformRef.current;
@@ -250,8 +251,12 @@ function DraggableTransform({
       }
     };
 
-    controls.addEventListener('dragging-changed', handleChange);
-    return () => controls.removeEventListener('dragging-changed', handleChange);
+    const emitter = controls as unknown as {
+      addEventListener: (type: string, fn: (event: { value: boolean }) => void) => void;
+      removeEventListener: (type: string, fn: (event: { value: boolean }) => void) => void;
+    };
+    emitter.addEventListener("dragging-changed", handleChange);
+    return () => emitter.removeEventListener("dragging-changed", handleChange);
   }, [mesh, onDragStart, onDragEnd]);
 
   return (
@@ -356,7 +361,9 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
       await enqueue.mutateAsync({ projectName: snapshot.projectName, type: "DELETE_ELEMENTS", elementIds: [selectedElementId] });
       setSelectedElementId(null);
       setSelectedMesh(null);
-    } catch {}
+    } catch {
+      return;
+    }
   }, [selectedElementId, snapshot.projectName, enqueue]);
 
   const moveElement = useCallback(async (elementId: string, newPosition: THREE.Vector3) => {
@@ -365,14 +372,18 @@ export function LiveGeometryView({ snapshot }: { snapshot: GeometrySnapshot }) {
       await enqueue.mutateAsync({ projectName: snapshot.projectName, type: "MOVE_ELEMENT", targetElementId: elementId, newCenterX: revit.x, newCenterY: revit.y, newCenterZ: revit.z });
       setSelectedElementId(null);
       setSelectedMesh(null);
-    } catch {}
+    } catch {
+      return;
+    }
   }, [snapshot.projectName, enqueue]);
 
   // Send selection to Revit (Web → Revit selection sync)
   const selectInRevit = useCallback(async (elementIds: string[]) => {
     try {
       await enqueue.mutateAsync({ projectName: snapshot.projectName, type: "SELECT_ELEMENTS", elementIds });
-    } catch {}
+    } catch {
+      return;
+    }
   }, [snapshot.projectName, enqueue]);
 
   // Revit selection state from snapshot (Revit → Web selection sync)

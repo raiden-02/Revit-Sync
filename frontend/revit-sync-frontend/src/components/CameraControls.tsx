@@ -4,6 +4,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { ViewPreset } from "./ViewCube";
 
 export type SceneBounds = {
@@ -32,7 +33,7 @@ function getPresetDir(preset: ViewPreset): THREE.Vector3 {
 }
 
 export function CameraControls({ target, bounds, cameraDistance, viewPreset, presetNonce }: CameraControlsProps) {
-    const orbitRef = useRef<any>(null);
+    const orbitRef = useRef<OrbitControlsImpl>(null);
     const { camera, gl } = useThree();
 
     const rmbDown = useRef(false);

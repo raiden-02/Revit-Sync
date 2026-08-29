@@ -1,112 +1,86 @@
 # RevitSync
 
-**A personal learning project:** bidirectional sync between Autodesk Revit and a web-based 3D viewer.
+Revit posts a bounding-box snapshot to a local ASP.NET Core API. A React / Three.js page polls that API and draws the same elements. Clicks in the browser enqueue commands. The add-in polls the queue and applies them on Revit's UI thread.
 
-> **Unofficial — not Autodesk work.** RevitSync is an independent portfolio project by [Mayur Reddy](https://github.com/raiden-02). It is **not** an Autodesk product and is **not** affiliated with, endorsed by, or sponsored by Autodesk, Inc. Autodesk and Revit are trademarks of Autodesk, Inc.
+```
+Revit add-in                    ASP.NET Core API                 Browser (React + Three.js)
+────────────                    ────────────────                 ──────────────────────────
+Export / DocumentChanged
+  POST /api/geometry     ──►    latest snapshot in memory  ──►   GET /api/geometry/latest (2s)
+                                                                     draw boxes, highlight
 
-Built to learn the Revit API while wrapping it in a small full-stack app (C# add-in → ASP.NET Core → React / Three.js). Local demo only — not production software.
+Click / drag / delete
+  GET /api/commands/next ◄──    per-project command queue  ◄──   POST /api/commands
+  ExternalEvent + Transaction
+```
+
+Local demo only. Three processes on one machine (`localhost:5245`). This is a personal learning project, not production software.
+
+> **Unofficial, not Autodesk work.** Independent portfolio project by [Mayur Reddy](https://github.com/raiden-02). Not an Autodesk product. Not affiliated with, endorsed by, or sponsored by Autodesk, Inc. Autodesk and Revit are trademarks of Autodesk, Inc.
 
 ### Demo
 
 [![Watch the demo](https://img.youtube.com/vi/9N6vfX0DKNM/hqdefault.jpg)](https://www.youtube.com/watch?v=9N6vfX0DKNM)
 
-[youtube.com/watch?v=9N6vfX0DKNM](https://www.youtube.com/watch?v=9N6vfX0DKNM) — Revit on the left, web viewer on the right: export, selection sync, live DocumentChanged updates, and click-to-place boxes.
+[youtube.com/watch?v=9N6vfX0DKNM](https://www.youtube.com/watch?v=9N6vfX0DKNM) : Revit on the left, web viewer on the right. Export, selection sync, live `DocumentChanged` updates, click-to-place boxes.
 
 ---
 
-## Features
+## What it does
 
-### Revit → Web
-- **Geometry export**: bounding boxes from 13 Revit categories (not full meshes)
-- **Auto-sync**: `DocumentChanged` triggers a debounced re-export (500ms)
-- **Selection sync**: Revit selection highlighted in the viewer (cyan)
-- **Properties panel**: Family, Type, Level, Area, Volume, and related parameters
-- **Category colors**: one color per category for massing visualization
+### Revit to web
 
-### Web → Revit
-- **Click-to-place**: add boxes in the browser; they appear as `DirectShape` elements in Revit
-- **Drag-to-move**: reposition **web-created** elements with transform handles
-- **Delete**: remove **web-created** elements on both sides
-- **Selection sync**: click in the viewer, then “Select in Revit” to highlight and zoom
+- **Export**: world-axis bounding boxes from 13 categories in the **active view** (whole document only if there is no view)
+- **Auto-sync**: `DocumentChanged` starts a 500 ms debounce, then an `ExternalEvent` re-exports
+- **Selection**: `Idling` checks selection every 300 ms. Selected ids ride along on the next snapshot. Viewer outlines them cyan
+- **Properties**: Name, Family, Type, Level, Mark, Comments, Length, Area, Volume, wall/floor offsets, phases, and Workset when the model is workshared
+- **Colors**: one hex color per category
+
+### Web to Revit
+
+| Command | What happens in Revit |
+|---------|------------------------|
+| `ADD_BOXES` | Creates `DirectShape` boxes in `OST_GenericModel`, tagged `ApplicationId = "RevitSync"` |
+| `MOVE_ELEMENT` | Translates that tagged DirectShape to a new center |
+| `DELETE_ELEMENTS` | Deletes those tagged DirectShapes only |
+| `SELECT_ELEMENTS` | `Selection.SetElementIds` plus `ShowElements` (zoom). No transaction |
+
+Move and delete from the web do **not** apply to ordinary Revit walls, floors, or families.
 
 ### Categories exported
-Walls, Roofs, Floors, Structural Columns, Structural Framing, Structural Foundation, Windows, Doors, Curtain Wall Panels, Curtain Wall Mullions, Stairs, Ramps, Generic Model
 
-### Intentional limits
-- In-memory API storage (lost on restart); no auth, no multi-user
-- Bounding boxes only — good for massing, not fabrication geometry
-- All three processes run on one machine (`localhost`)
-- Move/delete from the web only applies to elements tagged as created by this add-in
+Walls, Roofs, Floors, Structural Columns, Structural Framing, Structural Foundation, Windows, Doors, Curtain Wall Panels, Curtain Wall Mullions, Stairs, Ramps, Generic Model.
 
----
+### Limits (exact)
 
-## Tech Stack
-
-| Component | Technology |
-|-----------|------------|
-| **Revit add-in** | C# / .NET Framework 4.8 / Revit API (project files target Revit 2026) |
-| **Backend API** | ASP.NET Core 9, in-memory store, REST + Swagger |
-| **Frontend** | React 19, TypeScript, Three.js (React Three Fiber), TanStack Query, Tailwind CSS |
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              REVIT ADD-IN                                    │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
-│  │    App.cs    │  │  Geometry    │  │   Command    │  │  AutoExport  │    │
-│  │  (Startup)   │  │  Exporter    │  │   Poller     │  │   Handler    │    │
-│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘    │
-│         │                 │                 │                 │             │
-│         └─────── DocumentChanged / Idling ──┴──── ExternalEvent ────────────┘
-└─────────────────────────────────────────────────────────────────────────────┘
-                     │ POST /geometry              │ GET /commands/next
-                     ▼                             ▲
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           ASP.NET CORE BACKEND                               │
-│  ┌────────────────────────────────┐    ┌────────────────────────────────┐  │
-│  │     GeometryController         │    │     CommandsController         │  │
-│  │  POST /api/geometry            │    │  POST /api/commands            │  │
-│  │  GET  /api/geometry/latest     │    │  GET  /api/commands/next       │  │
-│  └────────────────────────────────┘    └────────────────────────────────┘  │
-│           ConcurrentDictionary                    ConcurrentQueue           │
-└─────────────────────────────────────────────────────────────────────────────┘
-                     │ GET /geometry/latest        │ POST /commands
-                     ▼                             ▲
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          REACT FRONTEND                                      │
-│  ┌────────────────────────────────┐    ┌────────────────────────────────┐  │
-│  │    useLatestGeometry           │    │    useEnqueueCommand           │  │
-│  │    (polls every 2s)            │    │    (mutation hook)             │  │
-│  └────────────────────────────────┘    └────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────────────────┐  │
-│  │                    LiveGeometryView (Three.js)                        │  │
-│  │   3D Canvas  │  Properties Panel  │  Control Panel  │  Category Legend│  │
-│  └──────────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Data flow
-- **Revit → Web**: add-in POSTs a snapshot; frontend polls `GET /api/geometry/latest` every 2s (ETag / 304 when unchanged)
-- **Web → Revit**: frontend POSTs a command; add-in polls `GET /api/commands/next` every 1.5s and applies it on the Revit UI thread via `ExternalEvent`
-- **Typical latency**: ~1.5–2s (polling, not WebSockets)
+- Geometry is **axis-aligned bounding boxes**, not meshes, faces, or rooms
+- Export with zero primitives does **not** POST, so the last snapshot stays in the API
+- Snapshot and command queue live in process memory. Restart the API and they are gone
+- No auth, no TLS on the demo URL, no multi-user, no conflict resolution
+- Add-in and viewer hard-code `http://localhost:5245`
+- Viewer poll: 2 s. Add-in command poll: 1.5 s. Not WebSockets
+- The API sends `ETag`. The viewer sends `If-None-Match` and reuses the last snapshot on 304
+- DTOs are copied in the add-in, the API, and TypeScript. There is no shared contract package
+- Command handler keeps one `Pending` slot. A second dequeue before `Execute` can drop the first command
+- Element ids on move/delete/select are parsed with `int.TryParse`
+- `Generate Column Grid` needs an active crop box and a structural column family
+- Add-in project is **.NET Framework 4.8** targeting Revit **2026** assemblies. Autodesk's official add-in target for Revit 2025/2026 is .NET 8. If the add-in does not load, check that mismatch first. This repo does not retarget it
 
 ---
 
-## Prerequisites
+## Tech
 
-- **Autodesk Revit 2026** at the default path `C:\Program Files\Autodesk\Revit 2026\` (the add-in project references those `RevitAPI.dll` / `RevitAPIUI.dll` assemblies). Other years: change `RevitYear` in the `.csproj` and copy into that year’s Addins folder.
-- **.NET 9 SDK** (or newer, with the net9.0 targeting pack) for the backend
-- **Node.js 18+** for the frontend
-- **Visual Studio 2022 or later** with .NET desktop development (for the .NET Framework 4.8 add-in)
+| Process | Stack |
+|---------|--------|
+| Revit add-in | C#, .NET Framework 4.8, Revit API (`RevitYear` defaults to 2026) |
+| Backend | ASP.NET Core 9, in-memory `ConcurrentDictionary` / `ConcurrentQueue`, Swagger |
+| Frontend | React 19, TypeScript, Three.js (React Three Fiber), TanStack Query, Tailwind CSS |
 
 ---
 
-## Quick Start
+## Run it
 
-Run the API and the viewer first, then load the add-in in Revit. Everything talks to `http://localhost:5245`.
+API and viewer first, then Revit. Everything talks to `http://localhost:5245`.
 
 ### 1. Backend
 
@@ -129,54 +103,50 @@ Viewer: `http://127.0.0.1:5173` (Vite is pinned to that host and port). `http://
 
 ### 3. Revit add-in
 
+Needs **Autodesk Revit 2026** at `C:\Program Files\Autodesk\Revit 2026\` (the `.csproj` references those `RevitAPI.dll` / `RevitAPIUI.dll` files). Other years: set `RevitYear` in the `.csproj` and copy into that year's Addins folder.
+
 1. Open `revit-addin/RevitSync.Addin/RevitSync.Addin.sln` in Visual Studio.
-2. Restore NuGet packages if prompted (`Newtonsoft.Json`).
-3. Build the solution (**Build → Build Solution**). A post-build step copies `RevitSync.Addin.dll`, `RevitSync.addin`, and the ribbon icon into:
-
-   `%APPDATA%\Autodesk\Revit\Addins\2026\`
-
+2. Restore NuGet if prompted (`Newtonsoft.Json`).
+3. Build the solution. A post-build step copies `RevitSync.Addin.dll`, `RevitSync.addin`, and the ribbon icon into `%APPDATA%\Autodesk\Revit\Addins\2026\`
 4. Restart Revit. The **RevitSync** panel is on the **Add-Ins** tab.
 
-If you need to install the manifest by hand, copy [`revit-addin/RevitSync.Addin/RevitSync.Addin/RevitSync.addin`](revit-addin/RevitSync.Addin/RevitSync.Addin/RevitSync.addin) next to the DLL in that Addins folder. The Assembly path is the DLL file name (same directory as the `.addin`).
+Manual install: copy [`revit-addin/RevitSync.Addin/RevitSync.Addin/RevitSync.addin`](revit-addin/RevitSync.Addin/RevitSync.Addin/RevitSync.addin) next to the DLL in that Addins folder. The Assembly path is the DLL file name.
 
-**Revit 2025+ note:** Autodesk’s official add-in target for Revit 2025/2026 is .NET 8. This repo’s add-in is still a .NET Framework 4.8 class library (as originally written). If the add-in does not load, that mismatch is the first thing to check — this project does not retarget the add-in.
+Also needed: **.NET 9 SDK** for the API, **Node.js 18+** for the viewer, **Visual Studio 2022+** with .NET desktop development for the 4.8 add-in.
 
----
+### Demo clicks
 
-## Usage
-
-1. Start the backend and frontend (steps 1–2 above).
-2. Open Revit with a project that has walls, floors, roofs, etc.
+1. Start API and viewer.
+2. Open a Revit model that has walls, floors, or roofs in the **active view**.
 3. Click **Export Geometry** on the RevitSync ribbon.
-4. Open the viewer at `http://127.0.0.1:5173`.
-5. Orbit / pan / zoom the 3D view. Click an element for properties.
-6. **Select in Revit** highlights and zooms that element in Revit.
-7. Select in Revit — the same element highlights cyan in the viewer.
-8. **Click to Place** → click the ground plane to create a box.
-9. Select a web-created box → drag the transform arrows to move it.
-10. Select a web-created box → **Delete**.
-
-After the first export, model edits sync automatically via `DocumentChanged` (no need to click Export again). **Generate Column Grid** is an optional test helper if you do not have a model handy.
+4. Open `http://127.0.0.1:5173`. Orbit / pan / zoom. Click a box for properties.
+5. **Select in Revit** highlights and zooms that element.
+6. Select in Revit. The same box goes cyan in the viewer.
+7. **Click to Place** → click the ground plane. A box appears as a DirectShape after the next command poll (~1.5 s) plus the next viewer poll (~2 s).
+8. Select a **web-created** box → drag the transform arrows to move, or **Delete**.
+9. After the first export, model edits re-export through `DocumentChanged`. **Generate Column Grid** is an optional helper if you have no model yet (needs crop box + a column family).
 
 ---
 
-## API Endpoints
+## API
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/geometry` | POST | Ingest geometry snapshot from Revit |
-| `/api/geometry/latest` | GET | Latest snapshot (ETag / `If-None-Match` → 304) |
-| `/api/commands` | POST | Queue a command for Revit |
-| `/api/commands/next` | GET | Dequeue next command (polled by the add-in) |
+| Endpoint | Method | What it does |
+|----------|--------|----------------|
+| `/api/geometry` | POST | Store latest snapshot for `projectName` |
+| `/api/geometry/latest` | GET | Latest snapshot. Optional `?projectName=`. `If-None-Match` → 304 |
+| `/api/commands` | POST | Enqueue `ADD_BOXES`, `DELETE_ELEMENTS`, `MOVE_ELEMENT`, or `SELECT_ELEMENTS` |
+| `/api/commands/next` | GET | Dequeue one command. Optional `?projectName=`. 204 if empty |
 
-### Command types
+---
 
-| Type | Description |
-|------|-------------|
-| `ADD_BOXES` | Create DirectShape boxes in Revit |
-| `DELETE_ELEMENTS` | Delete web-created elements by id |
-| `MOVE_ELEMENT` | Move a web-created element |
-| `SELECT_ELEMENTS` | Select and zoom to elements |
+## Checks you can run without Revit
+
+```bash
+dotnet test backend/RevitSync.Api.Tests/RevitSync.Api.Tests.csproj
+cd frontend/revit-sync-frontend && npm run build && npm run lint
+```
+
+The add-in needs Revit assemblies on disk. Visual Studio **Build Solution** is the check for that project.
 
 ---
 
@@ -184,4 +154,4 @@ After the first export, model edits sync automatically via `DocumentChanged` (no
 
 [MIT](LICENSE) © Mayur Reddy
 
-Autodesk® and Revit® are registered trademarks of Autodesk, Inc. This project is a personal learning exercise and is not an official Autodesk sample or plugin.
+Autodesk and Revit are registered trademarks of Autodesk, Inc. This project is a personal learning exercise and is not an official Autodesk sample or plugin.

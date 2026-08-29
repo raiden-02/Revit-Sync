@@ -17,6 +17,7 @@ builder.Services.AddCors(opt =>
         )
         .AllowAnyHeader()
         .AllowAnyMethod()
+        .WithExposedHeaders("ETag")
     );
 });
 
@@ -51,3 +52,5 @@ app.UseSwaggerUI();
 app.UseCors("frontend");
 app.MapControllers();
 app.Run();
+
+public partial class Program { }
