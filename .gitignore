@@ -263,6 +263,7 @@ out/
 .vscode/
 
 docs/
+/notes/
 
 # Test output
 [Tt]est[Rr]esults/
